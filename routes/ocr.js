@@ -3,7 +3,7 @@ import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import ocrService from '../services/ocr.js';
 import { authenticate } from '../middlewares/auth.js';
-import { Receipt, OCRLog } from '../models/Receipt.js';
+import { Receipt, OCRLog } from '../models/receipt.js';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -46,6 +46,51 @@ process.on('SIGINT', async () => {
     await ocrService.cleanup();
   }
   process.exit(0);
+});
+
+// Root OCR endpoint - NO AUTH REQUIRED
+router.get('/', (req, res) => {
+  try {
+    const status = ocrService ? ocrService.getStatus() : null;
+    
+    res.json({
+      success: true,
+      message: 'OCR Service API',
+      service: 'OCR',
+      version: '1.0.0',
+      timestamp: new Date().toISOString(),
+      status: status?.ready ? 'ready' : 'initializing',
+      endpoints: {
+        '/': 'OCR service information',
+        '/health': 'Health check',
+        '/status': 'Service status',
+        '/test-sample': 'Sample receipt data',
+        '/receipt': 'Process receipt image (POST, requires auth)',
+        '/text': 'Extract text from image (POST, requires auth)',
+        '/test-engines': 'Test both OCR engines (POST, requires auth)',
+        '/receipts': 'Manage receipts (GET/POST, requires auth)',
+        '/receipts/:id': 'Get/Update/Delete specific receipt (requires auth)',
+        '/reinitialize': 'Reinitialize OCR service (POST, requires auth)'
+      },
+      authentication: {
+        required: ['POST /receipt', 'POST /text', 'POST /test-engines', 'GET /receipts', 'POST /reinitialize'],
+        notRequired: ['GET /', 'GET /health', 'GET /status', 'GET /test-sample']
+      },
+      usage: {
+        imageFormat: 'base64 encoded image (JPEG, PNG, WebP)',
+        maxSize: '10MB',
+        supportedLanguages: ['English', 'Indonesian']
+      }
+    });
+  } catch (error) {
+    console.error('❌ OCR root endpoint error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error getting OCR service information',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // FIXED: Enhanced health check endpoint - NO AUTH REQUIRED
@@ -146,7 +191,18 @@ router.get('/status', async (req, res) => {
       service: 'OCR',
       timestamp: new Date().toISOString(),
       ocrServiceAvailable: !!ocrService,
-      ocrStatus: status
+      ocrStatus: status,
+      availableEndpoints: [
+        'GET /',
+        'GET /health', 
+        'GET /status',
+        'GET /test-sample',
+        'POST /receipt (auth required)',
+        'POST /text (auth required)',
+        'POST /test-engines (auth required)',
+        'GET /receipts (auth required)',
+        'POST /reinitialize (auth required)'
+      ]
     });
   } catch (error) {
     res.status(500).json({
